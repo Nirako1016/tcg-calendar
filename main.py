@@ -15,6 +15,9 @@ from fastapi.middleware.cors import CORSMiddleware
 import openpyxl
 from ics import Calendar, Event
 
+# GitHub 推送模块
+from github_push import push_ics_to_github, ensure_pages_enabled
+
 # 内存缓存：存储最近解析的事件
 import uuid
 event_cache: dict[str, list[dict]] = {}

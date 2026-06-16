@@ -1,0 +1,14 @@
+📅 TCG 赛事日历 - 订阅链接
+
+点击下方链接即可订阅，赛事更新自动同步：
+
+🔗 订阅链接：
+https://nirako1016.github.io/tcg-calendar/calendar.ics
+
+📱 各平台添加方式：
+- iPhone/Mac：打开「日历」App → 文件 → 新建日历订阅 → 粘贴链接
+- Android/Google 日历：设置 → 添加日历 → 通过 URL 添加 → 粘贴链接
+- Outlook：添加日历 → 从 Internet 订阅 → 粘贴链接
+
+📊 赛事覆盖：万智牌、宝可梦、游戏王等 TCG 赛事
+🔄 自动更新：赛事表更新后日历自动同步

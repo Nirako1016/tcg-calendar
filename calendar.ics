@@ -2,12 +2,19 @@ BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:Excel to ICS Calendar Tool
 BEGIN:VEVENT
-DTSTART;VALUE=DATE:20260710
-DTEND;VALUE=DATE:20260712
-DESCRIPTION:品类: 万智牌\n赛事: CommandFest·指挥官节\n城市: 上海
-LOCATION:上海
-SUMMARY:【万智牌】【CommandFest·指挥官节】
-UID:ce149e22-924d-4b46-9a91-c11f18638fb1@ce14.org
+DTSTART;VALUE=DATE:20261030
+DTEND;VALUE=DATE:20261103
+DESCRIPTION:品类: 万智牌\n赛事: Magic Spotlight: Fracture·聚光灯系列赛\n城市: 北京
+LOCATION:北京
+SUMMARY:【万智牌】【Magic Spotlight: Fracture·聚光灯系列赛】
+UID:ed76da3e-f6d5-4a3e-9e22-afcc85ad57e3@ed76.org
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260725
+DTEND;VALUE=DATE:20260728
+DESCRIPTION:品类: 洛卡纳\n赛事: 国冠赛
+SUMMARY:【洛卡纳】【国冠赛】
+UID:85396516-b162-4694-bf20-309e3134539f@8539.org
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20260913
@@ -15,23 +22,7 @@ DTEND;VALUE=DATE:20260915
 DESCRIPTION:品类: 万智牌\n赛事: Limited Championship Qualifiers·限制冠军赛预选赛\n城市: 杭州
 LOCATION:杭州
 SUMMARY:【万智牌】【Limited Championship Qualifiers·限制冠军赛预选赛】
-UID:12fa4d09-65c6-42d6-a859-8ef219826d3b@12fa.org
-END:VEVENT
-BEGIN:VEVENT
-DTSTART;VALUE=DATE:20260710
-DTEND;VALUE=DATE:20260713
-DESCRIPTION:品类: 万智牌\n赛事: Kadou Series·卡豆系列赛\n城市: 上海
-LOCATION:上海
-SUMMARY:【万智牌】【Kadou Series·卡豆系列赛】
-UID:a842c94f-9621-4ace-bee1-9acb12c4bcd1@a842.org
-END:VEVENT
-BEGIN:VEVENT
-DTSTART;VALUE=DATE:20261001
-DTEND;VALUE=DATE:20261009
-DESCRIPTION:品类: 万智牌\n赛事: National Day Command·十一指挥官推广活动\n城市: 合作WPN店家
-LOCATION:合作WPN店家
-SUMMARY:【万智牌】【National Day Command·十一指挥官推广活动】
-UID:8c197267-745c-48d7-b5e4-ecb009045044@8c19.org
+UID:edd4b63a-fdb3-4397-b0d8-191fa1fab21e@edd4.org
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20260911
@@ -39,7 +30,15 @@ DTEND;VALUE=DATE:20260915
 DESCRIPTION:品类: 万智牌\n赛事: Regional Championship·龙盾杯S13赛季总决赛\n城市: 杭州
 LOCATION:杭州
 SUMMARY:【万智牌】【Regional Championship·龙盾杯S13赛季总决赛】
-UID:4b00c816-34d8-4b97-b208-895a4d7ad12c@4b00.org
+UID:bf5fd577-3f13-4ad0-971f-52063b68ddd3@bf5f.org
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260710
+DTEND;VALUE=DATE:20260712
+DESCRIPTION:品类: 万智牌\n赛事: CommandFest·指挥官节\n城市: 上海
+LOCATION:上海
+SUMMARY:【万智牌】【CommandFest·指挥官节】
+UID:2864b2d4-9735-4f10-ac20-6ce078b9d226@2864.org
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20261101
@@ -47,21 +46,29 @@ DTEND;VALUE=DATE:20261103
 DESCRIPTION:品类: 万智牌\n赛事: Kadou Series·卡豆系列赛\n城市: 北京
 LOCATION:北京
 SUMMARY:【万智牌】【Kadou Series·卡豆系列赛】
-UID:3430f8b8-045c-4482-8ad2-bfd11aba9bb7@3430.org
+UID:e526ddfd-4cf6-4c24-85ff-87a040d150ef@e526.org
 END:VEVENT
 BEGIN:VEVENT
-DTSTART;VALUE=DATE:20261030
-DTEND;VALUE=DATE:20261103
-DESCRIPTION:品类: 万智牌\n赛事: Magic Spotlight: Fracture·聚光灯系列赛\n城市: 北京
-LOCATION:北京
-SUMMARY:【万智牌】【Magic Spotlight: Fracture·聚光灯系列赛】
-UID:a0af67c1-f01c-4313-ba17-ded72d73c3bf@a0af.org
+DTSTART;VALUE=DATE:20261001
+DTEND;VALUE=DATE:20261009
+DESCRIPTION:品类: 万智牌\n赛事: National Day Command·十一指挥官推广活动\n城市: 合作WPN店家
+LOCATION:合作WPN店家
+SUMMARY:【万智牌】【National Day Command·十一指挥官推广活动】
+UID:5afc04b6-a27c-4571-ad22-1eb47633fee9@5afc.org
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20261101
 DTEND;VALUE=DATE:20261103
 DESCRIPTION:品类: 万智牌\n赛事: Limited Championship Qualifiers·限制冠军赛预选赛
 SUMMARY:【万智牌】【Limited Championship Qualifiers·限制冠军赛预选赛】
-UID:69cc4b2c-3fe4-4c29-9c14-df1e62a1e341@69cc.org
+UID:8e5a1077-8512-459d-8deb-9f1c946719ff@8e5a.org
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260710
+DTEND;VALUE=DATE:20260713
+DESCRIPTION:品类: 万智牌\n赛事: Kadou Series·卡豆系列赛\n城市: 上海
+LOCATION:上海
+SUMMARY:【万智牌】【Kadou Series·卡豆系列赛】
+UID:4367192c-66cc-43b5-86e5-7c676cac148f@4367.org
 END:VEVENT
 END:VCALENDAR

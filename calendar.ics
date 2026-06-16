@@ -7,14 +7,61 @@ DTEND;VALUE=DATE:20260712
 DESCRIPTION:品类: 万智牌\n赛事: CommandFest·指挥官节\n城市: 上海
 LOCATION:上海
 SUMMARY:【万智牌】【CommandFest·指挥官节】
-UID:d500f28c-ef0f-4ad3-ae94-fb828a7dd44b@d500.org
+UID:ce149e22-924d-4b46-9a91-c11f18638fb1@ce14.org
 END:VEVENT
 BEGIN:VEVENT
-DTSTART;VALUE=DATE:20260610
-DTEND;VALUE=DATE:20260612
-DESCRIPTION:品类: 万智牌\n赛事: test1\n城市: 上海
+DTSTART;VALUE=DATE:20260913
+DTEND;VALUE=DATE:20260915
+DESCRIPTION:品类: 万智牌\n赛事: Limited Championship Qualifiers·限制冠军赛预选赛\n城市: 杭州
+LOCATION:杭州
+SUMMARY:【万智牌】【Limited Championship Qualifiers·限制冠军赛预选赛】
+UID:12fa4d09-65c6-42d6-a859-8ef219826d3b@12fa.org
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260710
+DTEND;VALUE=DATE:20260713
+DESCRIPTION:品类: 万智牌\n赛事: Kadou Series·卡豆系列赛\n城市: 上海
 LOCATION:上海
-SUMMARY:【万智牌】【test1】
-UID:c81138a0-fd6e-4841-b1d0-79ea9b60b511@c811.org
+SUMMARY:【万智牌】【Kadou Series·卡豆系列赛】
+UID:a842c94f-9621-4ace-bee1-9acb12c4bcd1@a842.org
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261001
+DTEND;VALUE=DATE:20261009
+DESCRIPTION:品类: 万智牌\n赛事: National Day Command·十一指挥官推广活动\n城市: 合作WPN店家
+LOCATION:合作WPN店家
+SUMMARY:【万智牌】【National Day Command·十一指挥官推广活动】
+UID:8c197267-745c-48d7-b5e4-ecb009045044@8c19.org
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260911
+DTEND;VALUE=DATE:20260915
+DESCRIPTION:品类: 万智牌\n赛事: Regional Championship·龙盾杯S13赛季总决赛\n城市: 杭州
+LOCATION:杭州
+SUMMARY:【万智牌】【Regional Championship·龙盾杯S13赛季总决赛】
+UID:4b00c816-34d8-4b97-b208-895a4d7ad12c@4b00.org
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261101
+DTEND;VALUE=DATE:20261103
+DESCRIPTION:品类: 万智牌\n赛事: Kadou Series·卡豆系列赛\n城市: 北京
+LOCATION:北京
+SUMMARY:【万智牌】【Kadou Series·卡豆系列赛】
+UID:3430f8b8-045c-4482-8ad2-bfd11aba9bb7@3430.org
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261030
+DTEND;VALUE=DATE:20261103
+DESCRIPTION:品类: 万智牌\n赛事: Magic Spotlight: Fracture·聚光灯系列赛\n城市: 北京
+LOCATION:北京
+SUMMARY:【万智牌】【Magic Spotlight: Fracture·聚光灯系列赛】
+UID:a0af67c1-f01c-4313-ba17-ded72d73c3bf@a0af.org
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261101
+DTEND;VALUE=DATE:20261103
+DESCRIPTION:品类: 万智牌\n赛事: Limited Championship Qualifiers·限制冠军赛预选赛
+SUMMARY:【万智牌】【Limited Championship Qualifiers·限制冠军赛预选赛】
+UID:69cc4b2c-3fe4-4c29-9c14-df1e62a1e341@69cc.org
 END:VEVENT
 END:VCALENDAR

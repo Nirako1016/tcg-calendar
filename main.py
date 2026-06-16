@@ -15,8 +15,9 @@ from fastapi.middleware.cors import CORSMiddleware
 import openpyxl
 from ics import Calendar, Event
 
-# GitHub 推送模块
-from github_push import push_ics_to_github, ensure_pages_enabled
+# 内存缓存：存储最近解析的事件
+import uuid
+event_cache: dict[str, list[dict]] = {}
 
 app = FastAPI(title="Excel to ICS Calendar Tool")
 
@@ -161,28 +162,22 @@ async def upload_excel(file: UploadFile = File(...)):
     try:
         content = await file.read()
         events = parse_excel(content)
-        return {"success": True, "count": len(events), "events": events}
+        # 存缓存，返回 session_id
+        session_id = str(uuid.uuid4())[:8]
+        event_cache[session_id] = events
+        return {"success": True, "count": len(events), "events": events, "session_id": session_id}
     except Exception as e:
         raise HTTPException(500, f"解析失败: {str(e)}")
 
 
 @app.post("/api/generate")
-async def generate_calendar(file: UploadFile = File(...)):
-    """上传 Excel 并直接生成 ICS 文件下载"""
-    if not file.filename:
-        raise HTTPException(400, "请选择文件")
-
-    ext = Path(file.filename).suffix.lower()
-    if ext not in [".xlsx", ".xls", ".xlsm"]:
-        raise HTTPException(400, "请上传 Excel 文件（.xlsx / .xls）")
+async def generate_calendar(session_id: str = Form(...)):
+    """根据已上传的 session_id 生成 ICS 文件"""
+    events = event_cache.get(session_id)
+    if not events:
+        raise HTTPException(400, "会话已过期，请重新上传 Excel")
 
     try:
-        content = await file.read()
-        events = parse_excel(content)
-
-        if not events:
-            raise HTTPException(400, "Excel 中没有解析到有效事件")
-
         cal = generate_ics(events)
 
         # 保存到 output 目录

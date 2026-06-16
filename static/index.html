@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCG 赛事日历生成器</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #0f0f1a;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        h1 {
+            text-align: center;
+            font-size: 28px;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 36px;
+            font-size: 14px;
+        }
+        .card {
+            background: #1a1a2e;
+            border: 1px solid #2a2a4a;
+            border-radius: 12px;
+            padding: 28px;
+            margin-bottom: 20px;
+        }
+        .card h2 {
+            font-size: 18px;
+            margin-bottom: 16px;
+            color: #ccc;
+        }
+
+        /* 上传区 */
+        .upload-zone {
+            border: 2px dashed #3a3a5a;
+            border-radius: 10px;
+            padding: 48px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+        }
+        .upload-zone:hover, .upload-zone.drag-over {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.06);
+        }
+        .upload-zone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+        .upload-icon {
+            font-size: 42px;
+            margin-bottom: 12px;
+        }
+        .upload-text {
+            color: #aaa;
+            font-size: 14px;
+        }
+        .upload-text strong {
+            color: #667eea;
+        }
+        .file-name {
+            margin-top: 12px;
+            color: #667eea;
+            font-size: 14px;
+            display: none;
+        }
+
+        /* 按钮 */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 28px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+        .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-primary:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid #3a3a5a;
+            color: #ccc;
+        }
+        .btn-outline:hover { border-color: #667eea; color: #fff; }
+        .btn-success {
+            background: #22c55e;
+            color: white;
+        }
+        .btn-success:hover { opacity: 0.9; }
+        .btn-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        /* 状态 */
+        .status {
+            text-align: center;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 16px;
+            display: none;
+        }
+        .status.info { background: rgba(102,126,234,0.15); color: #667eea; display: block; }
+        .status.success { background: rgba(34,197,94,0.15); color: #22c55e; display: block; }
+        .status.error { background: rgba(239,68,68,0.15); color: #ef4444; display: block; }
+
+        /* 事件表格 */
+        .table-wrap {
+            overflow-x: auto;
+            margin-top: 16px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        th, td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid #2a2a4a;
+        }
+        th {
+            color: #888;
+            font-weight: 500;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        td { color: #d0d0d0; }
+        tr:hover td { background: rgba(102,126,234,0.05); }
+        .event-title { color: #a78bfa; font-weight: 500; }
+
+        /* 订阅链接区 */
+        .subscribe-box {
+            background: #16162b;
+            border: 1px solid #22c55e33;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 16px;
+            display: none;
+        }
+        .subscribe-url {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #0f0f1a;
+            border-radius: 6px;
+            padding: 10px 14px;
+            margin: 10px 0;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 13px;
+            color: #22c55e;
+        }
+        .copy-btn {
+            background: #22c55e22;
+            border: 1px solid #22c55e44;
+            color: #22c55e;
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+        .copy-btn:hover { background: #22c55e33; }
+
+        .hidden { display: none !important; }
+        .text-muted { color: #666; font-size: 13px; }
+        .mb-8 { margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>TCG 赛事日历生成器</h1>
+    <p class="subtitle">上传 Excel → 预览事件 → 生成 ICS 日历订阅</p>
+
+    <!-- 步骤 1: 上传 -->
+    <div class="card" id="upload-card">
+        <h2>📤 上传 Excel 文件</h2>
+        <div class="upload-zone" id="upload-zone">
+            <input type="file" id="file-input" accept=".xlsx,.xls,.xlsm">
+            <div class="upload-icon">📁</div>
+            <div class="upload-text">
+                拖拽文件到此处，或 <strong>点击选择</strong><br>
+                <span class="text-muted">支持 .xlsx / .xls 格式</span>
+            </div>
+            <div class="file-name" id="file-name"></div>
+        </div>
+        <div class="text-muted mb-8" style="margin-top:12px;">
+            表格格式：A列=TCG品类 | B列=赛事名称 | C列=开始日期 | D列=结束日期 | E列=城市
+        </div>
+        <div class="status" id="upload-status"></div>
+    </div>
+
+    <!-- 步骤 2: 预览 -->
+    <div class="card hidden" id="preview-card">
+        <h2>📋 事件预览 (<span id="event-count">0</span> 个事件)</h2>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>事件标题</th>
+                        <th>开始日期</th>
+                        <th>结束日期</th>
+                        <th>城市</th>
+                    </tr>
+                </thead>
+                <tbody id="event-table-body"></tbody>
+            </table>
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btn-generate" disabled>⚡ 生成 ICS 日历</button>
+            <button class="btn btn-outline" id="btn-reupload">📤 重新上传</button>
+        </div>
+        <div class="status" id="generate-status"></div>
+    </div>
+
+    <!-- 步骤 3: 下载 & 订阅 -->
+    <div class="card hidden" id="result-card">
+        <h2>✅ 日历已生成</h2>
+        <div class="btn-row">
+            <button class="btn btn-success" id="btn-download">⬇ 下载 .ics 文件</button>
+            <button class="btn btn-primary" id="btn-publish" style="display:none;">🚀 推送到 GitHub Pages</button>
+        </div>
+        <div class="status" id="publish-status"></div>
+
+        <!-- GitHub Pages 订阅链接 -->
+        <div class="subscribe-box" id="github-subscribe-box">
+            <h3 style="font-size:15px;color:#22c55e;margin-bottom:6px;">🔗 GitHub Pages 订阅链接（推荐）</h3>
+            <p class="text-muted">稳定永久，添加到日历 App 即可自动同步</p>
+            <div class="subscribe-url" id="github-subscribe-url"></div>
+            <button class="copy-btn" id="btn-copy-github">📋 复制链接</button>
+        </div>
+
+        <!-- 直连订阅链接（备用） -->
+        <div class="subscribe-box" id="subscribe-box">
+            <h3 style="font-size:15px;color:#667eea;margin-bottom:6px;">🔗 直连订阅链接（备用）</h3>
+            <p class="text-muted">由当前服务器直接提供，服务器休眠时可能暂时不可用</p>
+            <div class="subscribe-url" id="subscribe-url" style="color:#667eea;"></div>
+            <button class="copy-btn" id="btn-copy" style="color:#667eea;border-color:#667eea44;background:#667eea22;">📋 复制链接</button>
+        </div>
+
+        <p class="text-muted" style="margin-top:10px;">
+            使用方式：Apple 日历 → 文件 → 新建日历订阅 → 粘贴链接<br>
+            Google 日历 → 其他日历 → 通过 URL 添加
+        </p>
+        <button class="btn btn-outline" id="btn-restart" style="margin-top:16px;">🔄 重新开始</button>
+    </div>
+</div>
+
+<script>
+let currentEvents = [];
+let currentIcsFilename = '';
+let currentIcsContent = '';
+const BASE_URL = window.location.origin;
+
+// ========== 上传 ==========
+const uploadZone = document.getElementById('upload-zone');
+const fileInput = document.getElementById('file-input');
+const fileName = document.getElementById('file-name');
+const uploadStatus = document.getElementById('upload-status');
+
+uploadZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    uploadZone.classList.add('drag-over');
+});
+uploadZone.addEventListener('dragleave', () => {
+    uploadZone.classList.remove('drag-over');
+});
+uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) {
+        handleFile(e.dataTransfer.files[0]);
+    }
+});
+fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) {
+        handleFile(fileInput.files[0]);
+    }
+});
+
+async function handleFile(file) {
+    fileName.textContent = `已选择: ${file.name}`;
+    fileName.style.display = 'block';
+    showStatus(uploadStatus, '正在解析 Excel...', 'info');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const resp = await fetch(`${BASE_URL}/api/upload`, {
+            method: 'POST',
+            body: formData,
+        });
+        const data = await resp.json();
+
+        if (!data.success) {
+            showStatus(uploadStatus, data.detail || '解析失败', 'error');
+            return;
+        }
+
+        currentEvents = data.events;
+        showStatus(uploadStatus, `解析成功！共 ${data.count} 个事件`, 'success');
+        showPreview(data.events);
+
+    } catch (err) {
+        showStatus(uploadStatus, `上传失败: ${err.message}`, 'error');
+    }
+}
+
+// ========== 预览 ==========
+function showPreview(events) {
+    document.getElementById('upload-card').classList.add('hidden');
+    document.getElementById('preview-card').classList.remove('hidden');
+    document.getElementById('event-count').textContent = events.length;
+
+    const tbody = document.getElementById('event-table-body');
+    tbody.innerHTML = events.map((e, i) => `
+        <tr>
+            <td>${i + 1}</td>
+            <td class="event-title">【${e.tcg_type}】【${e.event_name}】</td>
+            <td>${e.start_date}</td>
+            <td>${e.end_date}</td>
+            <td>${e.city || '-'}</td>
+        </tr>
+    `).join('');
+
+    document.getElementById('btn-generate').disabled = false;
+}
+
+// ========== 生成 ICS ==========
+document.getElementById('btn-generate').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-generate');
+    const status = document.getElementById('generate-status');
+    btn.disabled = true;
+    btn.textContent = '⏳ 生成中...';
+    showStatus(status, '正在生成 ICS 日历...', 'info');
+
+    // 重新上传文件来生成 ICS
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    try {
+        const resp = await fetch(`${BASE_URL}/api/generate`, {
+            method: 'POST',
+            body: formData,
+        });
+        const data = await resp.json();
+
+        if (!data.success) {
+            showStatus(status, data.detail || '生成失败', 'error');
+            btn.disabled = false;
+            btn.textContent = '⚡ 生成 ICS 日历';
+            return;
+        }
+
+        currentIcsFilename = data.ics_filename;
+        currentIcsContent = data.ics_content;
+        showStatus(status, '生成成功！', 'success');
+        showResult();
+
+    } catch (err) {
+        showStatus(status, `生成失败: ${err.message}`, 'error');
+        btn.disabled = false;
+        btn.textContent = '⚡ 生成 ICS 日历';
+    }
+});
+
+// ========== 结果 ==========
+function showResult() {
+    document.getElementById('preview-card').classList.add('hidden');
+    document.getElementById('result-card').classList.remove('hidden');
+
+    // 下载链接
+    const downloadUrl = `${BASE_URL}/api/download/${currentIcsFilename}`;
+    document.getElementById('btn-download').onclick = () => {
+        window.open(downloadUrl, '_blank');
+    };
+
+    // 直连订阅链接（备用）
+    const subscribeUrl = `${BASE_URL}/calendar.ics`;
+    document.getElementById('subscribe-url').textContent = subscribeUrl;
+    document.getElementById('subscribe-box').style.display = 'block';
+
+    // 检查 GitHub 配置状态
+    checkGitHubStatus();
+}
+
+// ========== GitHub 推送 ==========
+async function checkGitHubStatus() {
+    try {
+        const resp = await fetch(`${BASE_URL}/api/github/status`);
+        const status = await resp.json();
+
+        if (status.token_configured && status.repo_configured) {
+            document.getElementById('btn-publish').style.display = 'inline-flex';
+            if (status.pages && status.pages.enabled) {
+                showStatus(document.getElementById('publish-status'),
+                    'GitHub Pages 已就绪，点击推送按钮发布', 'info');
+            } else {
+                showStatus(document.getElementById('publish-status'),
+                    'GitHub 已配置，但 Pages 可能未开启。请在仓库 Settings → Pages 中启用', 'info');
+            }
+        }
+    } catch (err) {
+        console.log('GitHub status check failed:', err);
+    }
+}
+
+document.getElementById('btn-publish').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-publish');
+    const status = document.getElementById('publish-status');
+    btn.disabled = true;
+    btn.textContent = '⏳ 推送中...';
+    showStatus(status, '正在推送到 GitHub Pages...', 'info');
+
+    try {
+        const formData = new FormData();
+        formData.append('ics_content', currentIcsContent);
+
+        const resp = await fetch(`${BASE_URL}/api/publish`, {
+            method: 'POST',
+            body: formData,
+        });
+        const data = await resp.json();
+
+        if (data.success) {
+            showStatus(status, '推送成功！', 'success');
+            btn.textContent = '✅ 已推送';
+            btn.className = 'btn btn-success';
+
+            // 显示 GitHub Pages 订阅链接
+            document.getElementById('github-subscribe-url').textContent = data.url;
+            document.getElementById('github-subscribe-box').style.display = 'block';
+
+        } else {
+            showStatus(status, `推送失败: ${data.message}`, 'error');
+            btn.disabled = false;
+            btn.textContent = '🚀 推送到 GitHub Pages';
+        }
+    } catch (err) {
+        showStatus(status, `推送失败: ${err.message}`, 'error');
+        btn.disabled = false;
+        btn.textContent = '🚀 推送到 GitHub Pages';
+    }
+});
+
+document.getElementById('btn-copy-github').addEventListener('click', () => {
+    const url = document.getElementById('github-subscribe-url').textContent;
+    navigator.clipboard.writeText(url).then(() => {
+        const btn = document.getElementById('btn-copy-github');
+        btn.textContent = '✅ 已复制';
+        setTimeout(() => { btn.textContent = '📋 复制链接'; }, 2000);
+    });
+});
+
+document.getElementById('btn-copy').addEventListener('click', () => {
+    const url = document.getElementById('subscribe-url').textContent;
+    navigator.clipboard.writeText(url).then(() => {
+        const btn = document.getElementById('btn-copy');
+        btn.textContent = '✅ 已复制';
+        setTimeout(() => { btn.textContent = '📋 复制链接'; }, 2000);
+    });
+});
+
+// ========== 重置 ==========
+document.getElementById('btn-reupload').addEventListener('click', resetAll);
+document.getElementById('btn-restart').addEventListener('click', resetAll);
+
+function resetAll() {
+    currentEvents = [];
+    currentIcsFilename = '';
+    currentIcsContent = '';
+    fileInput.value = '';
+    fileName.style.display = 'none';
+    fileName.textContent = '';
+    document.getElementById('generate-status').className = 'status';
+    document.getElementById('generate-status').textContent = '';
+    document.getElementById('publish-status').className = 'status';
+    document.getElementById('publish-status').textContent = '';
+    document.getElementById('btn-generate').disabled = true;
+    document.getElementById('btn-generate').textContent = '⚡ 生成 ICS 日历';
+    document.getElementById('btn-publish').style.display = 'none';
+    document.getElementById('btn-publish').disabled = false;
+    document.getElementById('btn-publish').textContent = '🚀 推送到 GitHub Pages';
+    document.getElementById('btn-publish').className = 'btn btn-primary';
+    document.getElementById('preview-card').classList.add('hidden');
+    document.getElementById('result-card').classList.add('hidden');
+    document.getElementById('subscribe-box').style.display = 'none';
+    document.getElementById('github-subscribe-box').style.display = 'none';
+    document.getElementById('upload-card').classList.remove('hidden');
+}
+
+function showStatus(el, msg, type) {
+    el.textContent = msg;
+    el.className = `status ${type}`;
+}
+</script>
+</body>
+</html>

@@ -328,8 +328,14 @@ async function handleFile(file) {
         });
         const data = await resp.json();
 
+        if (!resp.ok) {
+            const errMsg = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail || data);
+            showStatus(uploadStatus, errMsg || `服务器错误 (${resp.status})`, 'error');
+            return;
+        }
+
         if (!data.success) {
-            showStatus(uploadStatus, data.detail || '解析失败', 'error');
+            showStatus(uploadStatus, data.detail || data.message || '解析失败', 'error');
             return;
         }
 
@@ -381,8 +387,17 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
         });
         const data = await resp.json();
 
+        if (!resp.ok) {
+            const errMsg = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail || data);
+            showStatus(status, errMsg || `服务器错误 (${resp.status})`, 'error');
+            btn.disabled = false;
+            btn.textContent = '⚡ 生成 ICS 日历';
+            return;
+        }
+
         if (!data.success) {
-            showStatus(status, data.detail || '生成失败', 'error');
+            const errMsg = data.detail || data.message || '生成失败';
+            showStatus(status, typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg), 'error');
             btn.disabled = false;
             btn.textContent = '⚡ 生成 ICS 日历';
             return;
@@ -394,7 +409,7 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
         showResult();
 
     } catch (err) {
-        showStatus(status, `生成失败: ${err.message}`, 'error');
+        showStatus(status, `网络错误: ${err.message}`, 'error');
         btn.disabled = false;
         btn.textContent = '⚡ 生成 ICS 日历';
     }

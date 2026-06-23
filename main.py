@@ -97,6 +97,10 @@ def parse_excel(file_bytes: bytes) -> list[dict]:
             print(f"第 {row_idx} 行日期解析失败: {e}")
             continue
 
+        # 校验：开始日期不能晚于结束日期
+        if start_date > end_date:
+            raise ValueError(f"第 {row_idx} 行「{event_name}」开始日期（{start_date}）晚于结束日期（{end_date}），请检查表格")
+
         events.append({
             "row": row_idx,
             "tcg_type": tcg_type,
@@ -120,15 +124,9 @@ def generate_ics(events: list[dict], calendar_name: str = "TCG赛事日历") -> 
         # 事件标题：【TCG品类】【赛事名称】
         e.name = f"【{evt['tcg_type']}】【{evt['event_name']}】"
 
-        # 日期：全天事件
-        # ICS 标准中 DTEND 是排他性的，但 ics.py 的 make_all_day() 会自动处理单天事件
-        # 只有多天事件（结束日期 > 开始日期）才需要 +1 天
+        # 日期：直接使用表里填写的日期，不做任何偏移
         start_dt = datetime.strptime(evt["start_date"], "%Y-%m-%d")
         end_dt = datetime.strptime(evt["end_date"], "%Y-%m-%d")
-
-        if end_dt > start_dt:
-            # 多天事件：DTEND 需要 +1（排他性）
-            end_dt = end_dt + timedelta(days=1)
 
         e.begin = start_dt.strftime("%Y-%m-%d")
         e.end = end_dt.strftime("%Y-%m-%d")

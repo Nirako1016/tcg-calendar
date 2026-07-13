@@ -538,46 +538,53 @@ async def wecom_callback(
     nonce: str = Query(...),
 ):
     """企业微信消息回调（POST）"""
-    body = await request.body()
-    xml_str = body.decode("utf-8")
-
-    # 提取加密内容
-    encrypt = extract_message(xml_str)
-    if not encrypt:
-        return PlainTextResponse("error", status_code=400)
-
-    # 验证签名
-    signature = verify_signature(WECOM_TOKEN, timestamp, nonce, encrypt)
-    if signature != msg_signature:
-        return PlainTextResponse("signature error", status_code=403)
-
-    # 解密
     try:
-        decrypted_xml = decrypt_message(WECOM_ENCODING_AES_KEY, encrypt, WECOM_CORP_ID)
+        body = await request.body()
+        xml_str = body.decode("utf-8")
+
+        # 提取加密内容
+        encrypt = extract_message(xml_str)
+        if not encrypt:
+            return PlainTextResponse("error", status_code=400)
+
+        # 验证签名
+        signature = verify_signature(WECOM_TOKEN, timestamp, nonce, encrypt)
+        if signature != msg_signature:
+            return PlainTextResponse("signature error", status_code=403)
+
+        # 解密
+        try:
+            decrypted_xml = decrypt_message(WECOM_ENCODING_AES_KEY, encrypt, WECOM_CORP_ID)
+        except Exception as e:
+            print(f"[WeCom解密失败] {e}")
+            return PlainTextResponse("decrypt error", status_code=500)
+
+        # 解析消息
+        msg = parse_decrypted_xml(decrypted_xml)
+        print(f"[WeCom收到] From: {msg.get('FromUserName')}, Content: {msg.get('Content')}")
+
+        # 处理消息
+        try:
+            reply_text = handle_wecom_message(msg)
+        except Exception as e:
+            import traceback
+            print(f"[WeCom处理异常] {e}\n{traceback.format_exc()}")
+            reply_text = f"处理消息时出错：{e}"
+
+        # 构建加密回复（回复时 ToUserName/FromUserName 需交换）
+        from_user = msg.get("FromUserName", "")
+        to_user = msg.get("ToUserName", "")
+        reply_xml = build_text_reply(to_user, from_user, reply_text)
+        encrypted_reply = build_encrypted_reply(
+            WECOM_TOKEN, WECOM_ENCODING_AES_KEY, WECOM_CORP_ID, reply_xml
+        )
+
+        return Response(content=encrypted_reply, media_type="application/xml")
+
     except Exception as e:
-        print(f"[解密失败] {e}")
-        return PlainTextResponse("decrypt error", status_code=500)
-
-    # 解析消息
-    msg = parse_decrypted_xml(decrypted_xml)
-    print(f"[收到消息] From: {msg.get('FromUserName')}, Content: {msg.get('Content')}")
-
-    # 处理消息
-    try:
-        reply_text = handle_wecom_message(msg)
-    except Exception as e:
-        print(f"[处理消息异常] {e}")
-        reply_text = f"处理消息时出错：{e}"
-
-    # 构建加密回复
-    from_user = msg.get("FromUserName", "")
-    to_user = msg.get("ToUserName", "")
-    reply_xml = build_text_reply(from_user, to_user, reply_text)
-    encrypted_reply = build_encrypted_reply(
-        WECOM_TOKEN, WECOM_ENCODING_AES_KEY, WECOM_CORP_ID, reply_xml
-    )
-
-    return Response(content=encrypted_reply, media_type="application/xml")
+        import traceback
+        print(f"[WeCom全局异常] {e}\n{traceback.format_exc()}")
+        return PlainTextResponse("error", status_code=500)
 
 
 @app.get("/api/bot/status")

@@ -359,8 +359,8 @@ async def add_event_via_form(
         if not result["success"]:
             return {"success": False, "message": result["message"]}
 
-        # 同步 ICS
-        sync_result = sync_events_to_ics()
+        # 同步 ICS（用 add_event 返回的完整事件列表，避免 GitHub 缓存导致覆盖）
+        sync_result = sync_events_to_ics(result["events"])
         sync_status = "日历已更新" if sync_result.get("success") else f"日历同步失败：{sync_result.get('message', '')}"
 
         return {
@@ -375,9 +375,10 @@ async def add_event_via_form(
 
 # ========== 企业微信机器人回调 ==========
 
-def sync_events_to_ics() -> dict:
+def sync_events_to_ics(events: list[dict] | None = None) -> dict:
     """从 GitHub 读取所有事件 → 生成 ICS → 推送到 GitHub Pages"""
-    events = fetch_events()
+    if events is None:
+        events = fetch_events()
     if not events:
         return {"success": False, "message": "暂无事件数据"}
 
@@ -496,13 +497,13 @@ def handle_wecom_message(msg: dict) -> str:
     if not add_result["success"]:
         return f"❌ 添加失败：{add_result['message']}"
 
-    # 自动同步 ICS
+    # 自动同步 ICS（使用 add_event 返回的完整事件列表，避免重复从 GitHub 读取导致缓存问题）
     dates = event["start_date"]
     if event["end_date"] != event["start_date"]:
         dates += f" ~ {event['end_date']}"
     city_text = f" · {event['city']}" if event["city"] else ""
 
-    sync_result = sync_events_to_ics()
+    sync_result = sync_events_to_ics(add_result["events"])
     sync_text = "日历已自动更新" if sync_result.get("success") else f"日历同步失败：{sync_result.get('message', '')}"
 
     return (

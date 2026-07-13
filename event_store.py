@@ -6,6 +6,7 @@
 import base64
 import json
 import os
+import time
 from datetime import datetime
 
 import requests
@@ -29,37 +30,56 @@ def _get_file_url(filename: str):
     return f"{GITHUB_API}/repos/{GITHUB_REPO}/contents/{filename}"
 
 
-def fetch_events() -> list[dict]:
+def fetch_events(retry_on_empty: bool = False) -> list[dict]:
     """
     从 GitHub 仓库读取 events.json，返回事件列表。
     如果文件不存在或读取失败，返回空列表。
+    
+    参数 retry_on_empty: 如果为 True，返回空列表时会短暂等待后重试（突破 GitHub 缓存）
     """
     if not GITHUB_TOKEN or not GITHUB_REPO:
         return []
 
-    try:
-        resp = requests.get(
-            _get_file_url(EVENTS_FILE),
-            headers=_headers(),
-            params={"ref": GITHUB_BRANCH},
-            timeout=15,
-        )
-        if resp.status_code == 404:
-            return []
-        if resp.status_code != 200:
-            print(f"[fetch_events] GitHub API 返回 {resp.status_code}")
+    def _do_fetch():
+        try:
+            # 添加时间戳参数突破 GitHub 缓存
+            cache_buster = int(time.time())
+            resp = requests.get(
+                _get_file_url(EVENTS_FILE),
+                headers={
+                    **_headers(),
+                    "Cache-Control": "no-cache",
+                    "Pragma": "no-cache",
+                },
+                params={"ref": GITHUB_BRANCH, "_": cache_buster},
+                timeout=15,
+            )
+            if resp.status_code == 404:
+                return []
+            if resp.status_code != 200:
+                print(f"[fetch_events] GitHub API 返回 {resp.status_code}")
+                return []
+
+            data = resp.json()
+            content = base64.b64decode(data["content"]).decode("utf-8")
+            events = json.loads(content)
+            if not isinstance(events, list):
+                return []
+            return events
+
+        except Exception as e:
+            print(f"[fetch_events] 读取失败: {e}")
             return []
 
-        data = resp.json()
-        content = base64.b64decode(data["content"]).decode("utf-8")
-        events = json.loads(content)
-        if not isinstance(events, list):
-            return []
-        return events
+    events = _do_fetch()
 
-    except Exception as e:
-        print(f"[fetch_events] 读取失败: {e}")
-        return []
+    if retry_on_empty and not events:
+        # 可能是 GitHub 缓存延迟，等待 1 秒后重试
+        print("[fetch_events] 返回空，等待 1s 后重试...")
+        time.sleep(1)
+        events = _do_fetch()
+
+    return events
 
 
 def save_events(events: list[dict]) -> dict:
@@ -114,9 +134,10 @@ def save_events(events: list[dict]) -> dict:
 def add_event(event: dict) -> dict:
     """
     添加单个事件到 events.json。
-    返回 {"success": bool, "total": int, "message": str}
+    返回 {"success": bool, "total": int, "message": str, "events": list[dict]}
     """
-    events = fetch_events()
+    # 先获取现有事件，带重试避免读到 GitHub 缓存空数据
+    events = fetch_events(retry_on_empty=True)
 
     # 去重：如果同品类+同赛事名+同日期已存在，则更新
     existing_idx = None
@@ -137,11 +158,22 @@ def add_event(event: dict) -> dict:
         action = "添加"
 
     result = save_events(events)
+
+    # 写入后重新获取一次，确保拿到最新的完整列表（突破 GitHub 缓存）
+    time.sleep(0.5)
+    final_events = fetch_events(retry_on_empty=True)
+
+    # 安全检查：如果写入后读回来是空的，但内存中 events 有数据，用内存数据
+    if not final_events and events:
+        print("[add_event] WARNING: GitHub 写入后读取返回空，使用内存中的事件列表")
+        final_events = events
+
     return {
         "success": result["success"],
-        "total": len(events),
+        "total": len(final_events),
         "action": action,
         "message": result["message"],
+        "events": final_events,
     }
 
 

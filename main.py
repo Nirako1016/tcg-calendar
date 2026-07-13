@@ -215,6 +215,15 @@ async def index():
     return HTMLResponse("<h1>Please create static/index.html</h1>")
 
 
+@app.get("/add", response_class=HTMLResponse)
+async def add_event_page():
+    """返回添加赛事表单页面（群友用）"""
+    html_path = static_dir / "add.html"
+    if html_path.exists():
+        return html_path.read_text(encoding="utf-8")
+    return HTMLResponse("<h1>Page not found</h1>")
+
+
 @app.post("/api/upload")
 async def upload_excel(file: UploadFile = File(...)):
     """上传 Excel 并返回解析后的事件列表"""
@@ -318,6 +327,50 @@ async def github_status():
         status["pages"] = pages
 
     return status
+
+
+# ========== 表单添加赛事（群友用）==========
+
+@app.post("/api/add-event-via-form")
+async def add_event_via_form(
+    tcg_type: str = Form(...),
+    event_name: str = Form(...),
+    start_date: str = Form(...),
+    end_date: str = Form(...),
+    city: str = Form(""),
+):
+    """网页表单提交赛事"""
+    event = {
+        "tcg_type": tcg_type.strip(),
+        "event_name": event_name.strip(),
+        "start_date": start_date.strip(),
+        "end_date": end_date.strip(),
+        "city": city.strip(),
+    }
+
+    if not event["tcg_type"] or not event["event_name"]:
+        return {"success": False, "message": "品类和赛事名称不能为空"}
+
+    if event["start_date"] > event["end_date"]:
+        return {"success": False, "message": "开始日期不能晚于结束日期"}
+
+    try:
+        result = add_event(event)
+        if not result["success"]:
+            return {"success": False, "message": result["message"]}
+
+        # 同步 ICS
+        sync_result = sync_events_to_ics()
+        sync_status = "日历已更新" if sync_result.get("success") else f"日历同步失败：{sync_result.get('message', '')}"
+
+        return {
+            "success": True,
+            "event": event,
+            "total": result["total"],
+            "sync_status": sync_status,
+        }
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
 
 # ========== 企业微信机器人回调 ==========

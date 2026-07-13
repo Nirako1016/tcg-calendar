@@ -1,124 +1,175 @@
 """
-Deepseek LLM 解析模块
-将自然语言消息解析为结构化 TCG 赛事数据
+TCG 赛事消息解析模块（规则匹配，零依赖）
+从自然语言消息中提取赛事信息
 """
-import json
-import os
 import re
-import traceback
 from datetime import datetime
 
-import requests
 
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
-DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
+def _parse_date(date_str: str, default_year: int) -> str | None:
+    """将中文日期字符串解析为 YYYY-MM-DD"""
+    date_str = date_str.strip()
 
-SYSTEM_PROMPT = """你是一个TCG赛事信息提取助手。用户会发送一段关于TCG赛事的自然语言描述，你需要提取以下字段：
+    # 2026年7月15日 / 2026-07-15 / 2026.7.15 / 2026/7/15
+    m = re.match(r'(\d{4})\s*[年.\-/]\s*(\d{1,2})\s*[月.\-/]\s*(\d{1,2})\s*日?$', date_str)
+    if m:
+        return f"{int(m.group(1)):04d}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
 
-- tcg_type: TCG品类（如：宝可梦卡牌、游戏王OCG、万智牌、数码宝贝卡牌、航海王卡牌等）
-- event_name: 赛事名称
-- start_date: 开始日期，格式 YYYY-MM-DD
-- end_date: 结束日期，格式 YYYY-MM-DD（如果只提到一个日期，则与开始日期相同）
-- city: 举办城市
+    # 7月15日 / 7.15 / 7/15
+    m = re.match(r'(\d{1,2})\s*[月.\-/]\s*(\d{1,2})\s*日?$', date_str)
+    if m:
+        return f"{default_year:04d}-{int(m.group(1)):02d}-{int(m.group(2)):02d}"
 
-注意事项：
-1. 如果用户没有明确指定年份，默认使用当前年份
-2. 如果用户说"7月15号到16号"，开始=07-15，结束=07-16
-3. 如果用户说"7月15号"，开始和结束都是07-15
-4. 如果信息不完整，在对应字段填 null
+    # 7月15号 / 15号
+    m = re.match(r'(\d{1,2})\s*月\s*(\d{1,2})\s*[号日]$', date_str)
+    if m:
+        return f"{default_year:04d}-{int(m.group(1)):02d}-{int(m.group(2)):02d}"
 
-请严格按照以下JSON格式返回，不要有任何其他文字：
-{"tcg_type":"","event_name":"","start_date":"","end_date":"","city":""}"""
+    # 7.15 (纯数字日期)
+    m = re.match(r'(\d{1,2})\.(\d{1,2})$', date_str)
+    if m:
+        return f"{default_year:04d}-{int(m.group(1)):02d}-{int(m.group(2)):02d}"
+
+    # 0715 (4位数字)
+    m = re.match(r'(\d{2})(\d{2})$', date_str)
+    if m:
+        return f"{default_year:04d}-{int(m.group(1)):02d}-{int(m.group(2)):02d}"
+
+    return None
 
 
 def parse_event_message(message: str) -> tuple[dict | None, str | None]:
     """
-    用 Deepseek 解析自然语言消息，返回 (结构化事件数据, 错误信息)。
+    用规则匹配解析自然语言消息，返回 (结构化事件数据, 错误信息)。
     成功时 error 为 None，失败时 data 为 None。
+
+    支持的消息格式（按优先级）：
+    1. TCG品类 赛事名称 开始日期 到 结束日期 城市
+    2. TCG品类 赛事名称 日期 城市 （单天赛事）
     """
-    if not DEEPSEEK_API_KEY:
-        return None, "未配置 DEEPSEEK_API_KEY 环境变量"
-
+    msg = message.strip()
     current_year = datetime.now().year
-    user_msg = f"当前年份是{current_year}年。请解析以下消息：\n\n{message}"
 
-    headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        "Content-Type": "application/json",
-    }
+    # ========== 模式1: 有明确日期范围的 ==========
+    # 匹配 "到" / "至" / "~" / "-" 分隔的日期范围
+    # 例: 宝可梦卡牌 上海公开赛 7月15日到16日 上海
+    # 例: 游戏王 广州站 7.15~7.17 广州
+    # 例: 万智牌 北京大奖赛 2026年7月15日-7月20日 北京
 
-    payload = {
-        "model": "deepseek-chat",
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_msg},
-        ],
-        "temperature": 0.1,
-        "max_tokens": 300,
-    }
+    date_range_patterns = [
+        # "到" / "至" / "~" / "-" 分隔
+        r'(.+?)\s+(.+?)\s+(\S{2,})\s*[到至~\-]\s*(\S{2,})\s+(.+)',
+        # 中文日期连写: 7月15日到16日
+        r'(.+?)\s+(.+?)\s+(\d{1,2}月\d{1,2}[号日])\s*[到至~\-]\s*(\d{1,2}月?\d{0,2}[号日]?)\s+(.+)',
+    ]
 
-    try:
-        resp = requests.post(DEEPSEEK_API_URL, json=payload, headers=headers, timeout=30)
-        if resp.status_code != 200:
-            error_body = resp.text[:300]
-            return None, f"Deepseek API 返回 {resp.status_code}: {error_body}"
+    for pattern in date_range_patterns:
+        m = re.match(pattern, msg)
+        if m:
+            tcg_type = m.group(1).strip()
+            event_name = m.group(2).strip()
+            start_raw = m.group(3).strip()
+            end_raw = m.group(4).strip()
+            city = m.group(5).strip()
 
-        resp_data = resp.json()
-        content = resp_data["choices"][0]["message"]["content"]
+            start_date = _parse_date(start_raw, current_year)
+            end_date = _parse_date(end_raw, current_year)
 
-        # 清理可能的 markdown 代码块标记
-        content = content.strip()
-        if content.startswith("```"):
-            content = re.sub(r"^```(?:json)?\s*", "", content)
-            content = re.sub(r"\s*```$", "", content)
+            if start_date and end_date:
+                # 如果 end_date 是 "16日" 这种简写，尝试补全
+                if end_date and not end_date.startswith(str(current_year)):
+                    # 已经是补全过的
+                    pass
 
-        # 尝试从返回内容中提取 JSON（兼容非 json_object 模式的返回）
-        json_match = re.search(r'\{[^{}]*\}', content)
-        if not json_match:
-            return None, f"Deepseek 返回内容不含 JSON: {content[:200]}"
+                return {
+                    "tcg_type": tcg_type,
+                    "event_name": event_name,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "city": city,
+                }, None
 
-        data = json.loads(json_match.group(0))
+            # 如果 end 是 "16日" 简写，尝试从 start 拼接
+            if start_date:
+                end_simple = re.match(r'(\d{1,2})\s*[月日号]?$', end_raw)
+                if end_simple:
+                    day = int(end_simple.group(1))
+                    year_month = start_date[:8]  # YYYY-MM-
+                    end_date = f"{year_month}{day:02d}"
+                    return {
+                        "tcg_type": tcg_type,
+                        "event_name": event_name,
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "city": city,
+                    }, None
 
-        # 校验必填字段
-        if not data.get("event_name"):
-            return None, f"Deepseek 未提取到赛事名称，返回: {data}"
-        if not data.get("start_date"):
-            return None, f"Deepseek 未提取到日期，返回: {data}"
+    # ========== 模式2: 单天赛事 ==========
+    # 例: 宝可梦卡牌 上海公开赛 7月15日 上海
+    m = re.match(r'(.+?)\s+(.+?)\s+(\S{3,})\s+(.+)', msg)
+    if m:
+        tcg_type = m.group(1).strip()
+        event_name = m.group(2).strip()
+        date_raw = m.group(3).strip()
+        city = m.group(4).strip()
 
-        # 确保 end_date 有值
-        if not data.get("end_date"):
-            data["end_date"] = data["start_date"]
+        date = _parse_date(date_raw, current_year)
+        if date:
+            return {
+                "tcg_type": tcg_type,
+                "event_name": event_name,
+                "start_date": date,
+                "end_date": date,
+                "city": city,
+            }, None
 
-        # 校验日期格式
-        for key in ("start_date", "end_date"):
-            try:
-                datetime.strptime(data[key], "%Y-%m-%d")
-            except (ValueError, TypeError):
-                return None, f"日期格式无效: {key}={data.get(key)}, 返回: {data}"
+    # ========== 模式3: 无城市的日期范围 ==========
+    m = re.match(r'(.+?)\s+(.+?)\s+(\S{2,})\s*[到至~\-]\s*(\S{2,})$', msg)
+    if m:
+        tcg_type = m.group(1).strip()
+        event_name = m.group(2).strip()
+        start_raw = m.group(3).strip()
+        end_raw = m.group(4).strip()
 
-        # 校验开始日期不晚于结束日期
-        if data["start_date"] > data["end_date"]:
-            return None, f"开始日期晚于结束日期: {data['start_date']} > {data['end_date']}"
+        start_date = _parse_date(start_raw, current_year)
+        end_date = _parse_date(end_raw, current_year)
 
-        return data, None
+        if start_date and end_date:
+            return {
+                "tcg_type": tcg_type,
+                "event_name": event_name,
+                "start_date": start_date,
+                "end_date": end_date,
+                "city": "",
+            }, None
 
-    except requests.Timeout:
-        return None, "Deepseek API 请求超时"
-    except requests.ConnectionError:
-        return None, "无法连接 Deepseek API，请检查网络"
-    except requests.RequestException as e:
-        return None, f"Deepseek 请求异常: {e}"
-    except (json.JSONDecodeError, KeyError) as e:
-        return None, f"Deepseek 返回解析失败: {e}\n原始内容: {content[:200]}"
-    except Exception as e:
-        traceback.print_exc()
-        return None, f"未知错误: {e}"
+    # ========== 模式4: 无城市的单天 ==========
+    m = re.match(r'(.+?)\s+(.+?)\s+(\S{3,})$', msg)
+    if m:
+        tcg_type = m.group(1).strip()
+        event_name = m.group(2).strip()
+        date_raw = m.group(3).strip()
+
+        date = _parse_date(date_raw, current_year)
+        if date:
+            return {
+                "tcg_type": tcg_type,
+                "event_name": event_name,
+                "start_date": date,
+                "end_date": date,
+                "city": "",
+            }, None
+
+    return None, (
+        "无法从消息中提取完整的赛事信息。\n"
+        "请按格式发送：品类 赛事名称 日期 城市\n"
+        "例：宝可梦卡牌 上海公开赛 7月15日到16日 上海"
+    )
 
 
 def is_add_event_intent(message: str) -> bool:
     """
     判断消息是否是添加赛事的意图（而非命令）
-    命令包括：列表、查看、删除、帮助等
     """
     msg = message.strip().lower()
     commands = ["列表", "查看", "列出", "删除", "移除", "帮助", "help", "清空", "同步", "status"]

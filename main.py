@@ -409,12 +409,12 @@ def handle_wecom_message(msg: dict) -> str:
     if not is_add_event_intent(content):
         return "无法识别的命令。发送「帮助」查看使用说明。"
 
-    parsed = parse_event_message(content)
-    if not parsed:
+    parsed, error = parse_event_message(content)
+    if parsed is None:
         return (
-            "⚠️ 未能识别赛事信息，请确保包含品类、赛事名称和日期。\n\n"
-            "示例：宝可梦卡牌 上海公开赛 7月15日到16日 上海\n\n"
-            "发送「帮助」查看完整说明。"
+            f"⚠️ 未能识别赛事信息\n"
+            f"错误详情：{error}\n\n"
+            "示例：宝可梦卡牌 上海公开赛 7月15日到16日 上海"
         )
 
     # 添加事件
@@ -525,7 +525,30 @@ async def bot_status():
     }
 
 
+@app.get("/api/bot/status")
+async def bot_status():
+    """检查企业微信机器人配置状态"""
+    return {
+        "wecom_configured": bool(WECOM_CORP_ID and WECOM_CORP_SECRET and WECOM_TOKEN and WECOM_ENCODING_AES_KEY),
+        "deepseek_configured": bool(os.environ.get("DEEPSEEK_API_KEY")),
+        "github_configured": bool(GITHUB_TOKEN and GITHUB_REPO),
+        "events_count": len(fetch_events()),
+    }
+
+
+@app.post("/api/bot/debug-parse")
+async def debug_parse(content: str = Form(...)):
+    """调试端点：测试 Deepseek 解析"""
+    parsed, error = parse_event_message(content)
+    if parsed:
+        return {"success": True, "parsed": parsed, "error": None}
+    return {"success": False, "parsed": None, "error": error}
+
+
 # ========== 启动入口 ==========
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+# ========== 启动入口 ==========

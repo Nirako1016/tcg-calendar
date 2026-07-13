@@ -338,12 +338,25 @@ def handle_wecom_message(msg: dict) -> str:
     """
     处理解密后的企业微信消息，返回回复文本
     """
+    import re
+
     msg_type = msg.get("MsgType", "")
     content = msg.get("Content", "").strip() if msg.get("Content") else ""
     from_user = msg.get("FromUserName", "")
 
     if msg_type != "text":
         return "目前只支持文字消息哦，直接把赛事信息发给我就行～"
+
+    # 剥离 @机器人名称 前缀（群聊中 @ 消息会带这个前缀）
+    content = re.sub(r"^@[^\s]+\s*", "", content).strip()
+
+    # 如果剥离后为空（纯 @ 没有内容），显示帮助
+    if not content:
+        return (
+            "👋 你好！请直接发送赛事信息，例如：\n"
+            "宝可梦卡牌 上海公开赛 7月15日到16日 上海\n\n"
+            "发送「帮助」查看完整说明。"
+        )
 
     # 命令：帮助
     if content.lower() in ("帮助", "help", "?", "？"):

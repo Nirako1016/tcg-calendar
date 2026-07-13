@@ -1,22 +1,39 @@
 """
-Excel → ICS 日历订阅工具
+Excel → ICS 日历订阅工具 + 企业微信机器人
 FastAPI 后端服务
 """
 import os
 import io
+import json
 import tempfile
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import parse_qs
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Query
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import openpyxl
+import requests as http_requests
 from ics import Calendar, Event
 
 # GitHub 推送模块
 from github_push import push_ics_to_github, ensure_pages_enabled
+# WeCom 加解密
+from wecom_crypto import (
+    verify_signature,
+    decrypt_message,
+    build_encrypted_reply,
+    extract_message,
+    parse_decrypted_xml,
+    build_text_reply,
+)
+# LLM 解析
+from llm_parser import parse_event_message, is_add_event_intent
+# 事件持久化
+from event_store import fetch_events, add_event, remove_events, clear_all_events
 
 # 内存缓存：存储最近解析的事件
 import uuid
@@ -42,6 +59,48 @@ ics_output_dir.mkdir(exist_ok=True)
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
 GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
+
+# 企业微信配置
+WECOM_CORP_ID = os.environ.get("WECOM_CORP_ID", "")
+WECOM_AGENT_ID = int(os.environ.get("WECOM_AGENT_ID", "0"))
+WECOM_CORP_SECRET = os.environ.get("WECOM_CORP_SECRET", "")
+WECOM_TOKEN = os.environ.get("WECOM_TOKEN", "")
+WECOM_ENCODING_AES_KEY = os.environ.get("WECOM_ENCODING_AES_KEY", "")
+
+# access_token 缓存
+_wecom_access_token: str = ""
+_wecom_token_expires: float = 0
+
+
+def get_wecom_access_token() -> str:
+    """获取企业微信 access_token（带缓存）"""
+    global _wecom_access_token, _wecom_token_expires
+    if _wecom_access_token and time.time() < _wecom_token_expires:
+        return _wecom_access_token
+
+    url = "https://qyapi.weixin.qq.com/cgi-bin/gettoken"
+    params = {"corpid": WECOM_CORP_ID, "corpsecret": WECOM_CORP_SECRET}
+    resp = http_requests.get(url, params=params, timeout=10)
+    data = resp.json()
+    if data.get("errcode") == 0:
+        _wecom_access_token = data["access_token"]
+        _wecom_token_expires = time.time() + data.get("expires_in", 7200) - 300
+        return _wecom_access_token
+    raise RuntimeError(f"获取 access_token 失败: {data}")
+
+
+def send_wecom_message(user_id: str, content: str):
+    """主动发送消息给用户"""
+    token = get_wecom_access_token()
+    url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={token}"
+    payload = {
+        "touser": user_id,
+        "msgtype": "text",
+        "agentid": WECOM_AGENT_ID,
+        "text": {"content": content},
+    }
+    resp = http_requests.post(url, json=payload, timeout=10)
+    return resp.json()
 
 
 def parse_date_from_excel(value) -> str:
@@ -259,6 +318,211 @@ async def github_status():
         status["pages"] = pages
 
     return status
+
+
+# ========== 企业微信机器人回调 ==========
+
+def sync_events_to_ics() -> dict:
+    """从 GitHub 读取所有事件 → 生成 ICS → 推送到 GitHub Pages"""
+    events = fetch_events()
+    if not events:
+        return {"success": False, "message": "暂无事件数据"}
+
+    cal = generate_ics(events)
+    ics_content = cal.serialize()
+    result = push_ics_to_github(ics_content)
+    return result
+
+
+def handle_wecom_message(msg: dict) -> str:
+    """
+    处理解密后的企业微信消息，返回回复文本
+    """
+    msg_type = msg.get("MsgType", "")
+    content = msg.get("Content", "").strip() if msg.get("Content") else ""
+    from_user = msg.get("FromUserName", "")
+
+    if msg_type != "text":
+        return "目前只支持文字消息哦，直接把赛事信息发给我就行～"
+
+    # 命令：帮助
+    if content.lower() in ("帮助", "help", "?", "？"):
+        return (
+            "📋 TCG赛事日历机器人 使用说明\n\n"
+            "1️⃣ 添加赛事：直接发送赛事信息，例如：\n"
+            "   宝可梦卡牌 上海公开赛 7月15日到16日 上海\n\n"
+            "2️⃣ 查看所有赛事：发送「列表」\n\n"
+            "3️⃣ 删除赛事：发送「删除 关键词」（如：删除 上海公开赛）\n\n"
+            "4️⃣ 同步日历：发送「同步」手动推送日历到订阅链接\n\n"
+            "📅 订阅链接：\n"
+            "https://nirako1016.github.io/tcg-calendar/calendar.ics"
+        )
+
+    # 命令：列表
+    if content.lower() in ("列表", "查看", "列出"):
+        events = fetch_events()
+        if not events:
+            return "📋 当前没有任何赛事记录\n\n发送赛事信息即可添加，例如：\n宝可梦卡牌 上海公开赛 7月15日到16日 上海"
+
+        lines = [f"📋 共 {len(events)} 场赛事：\n"]
+        # 按开始日期排序
+        events_sorted = sorted(events, key=lambda e: e.get("start_date", ""))
+        for i, evt in enumerate(events_sorted, 1):
+            dates = evt["start_date"]
+            if evt["end_date"] != evt["start_date"]:
+                dates += f" ~ {evt['end_date']}"
+            city = f" · {evt['city']}" if evt.get("city") else ""
+            lines.append(f"{i}. 【{evt['tcg_type']}】{evt['event_name']}\n   {dates}{city}")
+        return "\n".join(lines)
+
+    # 命令：删除
+    if content.lower().startswith("删除") or content.lower().startswith("移除"):
+        keyword = content[2:].strip() or content[3:].strip()
+        if not keyword:
+            return "请指定要删除的赛事关键词，例如：删除 上海公开赛"
+        result = remove_events(keyword)
+        if result["success"] and result["removed"] > 0:
+            sync_events_to_ics()
+            return f"✅ 已删除 {result['removed']} 场匹配「{keyword}」的赛事\n当前剩余 {result['total']} 场赛事\n日历已自动更新"
+        elif result["success"]:
+            return f"未找到包含「{keyword}」的赛事"
+        else:
+            return f"删除失败：{result['message']}"
+
+    # 命令：同步
+    if content.lower() in ("同步", "sync", "status"):
+        result = sync_events_to_ics()
+        if result["success"]:
+            return f"✅ 日历已同步到 GitHub Pages\n订阅链接：{result.get('url', '')}"
+        else:
+            return f"❌ 同步失败：{result.get('message', '未知错误')}"
+
+    # 命令：清空
+    if content.lower() in ("清空", "清除"):
+        result = clear_all_events()
+        if result["success"]:
+            return "✅ 已清空所有赛事数据"
+        else:
+            return f"清空失败：{result['message']}"
+
+    # 默认：尝试解析为赛事信息
+    if not is_add_event_intent(content):
+        return "无法识别的命令。发送「帮助」查看使用说明。"
+
+    parsed = parse_event_message(content)
+    if not parsed:
+        return (
+            "⚠️ 未能识别赛事信息，请确保包含品类、赛事名称和日期。\n\n"
+            "示例：宝可梦卡牌 上海公开赛 7月15日到16日 上海\n\n"
+            "发送「帮助」查看完整说明。"
+        )
+
+    # 添加事件
+    event = {
+        "tcg_type": parsed["tcg_type"],
+        "event_name": parsed["event_name"],
+        "start_date": parsed["start_date"],
+        "end_date": parsed["end_date"],
+        "city": parsed.get("city", ""),
+    }
+    add_result = add_event(event)
+
+    if not add_result["success"]:
+        return f"❌ 添加失败：{add_result['message']}"
+
+    # 自动同步 ICS
+    dates = event["start_date"]
+    if event["end_date"] != event["start_date"]:
+        dates += f" ~ {event['end_date']}"
+    city_text = f" · {event['city']}" if event["city"] else ""
+
+    sync_result = sync_events_to_ics()
+    sync_text = "日历已自动更新" if sync_result.get("success") else f"日历同步失败：{sync_result.get('message', '')}"
+
+    return (
+        f"✅ 已{add_result['action']}赛事：\n"
+        f"【{event['tcg_type']}】{event['event_name']}\n"
+        f"📅 {dates}{city_text}\n\n"
+        f"当前共 {add_result['total']} 场赛事\n"
+        f"{sync_text}"
+    )
+
+
+@app.get("/wecom/callback")
+async def wecom_verify(
+    msg_signature: str = Query(...),
+    timestamp: str = Query(...),
+    nonce: str = Query(...),
+    echostr: str = Query(...),
+):
+    """企业微信回调 URL 验证（GET）"""
+    signature = verify_signature(WECOM_TOKEN, timestamp, nonce, echostr)
+    if signature != msg_signature:
+        raise HTTPException(403, "签名验证失败")
+
+    decrypted = decrypt_message(WECOM_ENCODING_AES_KEY, echostr, WECOM_CORP_ID)
+    return PlainTextResponse(content=decrypted, media_type="text/plain")
+
+
+@app.post("/wecom/callback")
+async def wecom_callback(
+    request: Request,
+    msg_signature: str = Query(...),
+    timestamp: str = Query(...),
+    nonce: str = Query(...),
+):
+    """企业微信消息回调（POST）"""
+    body = await request.body()
+    xml_str = body.decode("utf-8")
+
+    # 提取加密内容
+    encrypt = extract_message(xml_str)
+    if not encrypt:
+        return PlainTextResponse("error", status_code=400)
+
+    # 验证签名
+    signature = verify_signature(WECOM_TOKEN, timestamp, nonce, encrypt)
+    if signature != msg_signature:
+        return PlainTextResponse("signature error", status_code=403)
+
+    # 解密
+    try:
+        decrypted_xml = decrypt_message(WECOM_ENCODING_AES_KEY, encrypt, WECOM_CORP_ID)
+    except Exception as e:
+        print(f"[解密失败] {e}")
+        return PlainTextResponse("decrypt error", status_code=500)
+
+    # 解析消息
+    msg = parse_decrypted_xml(decrypted_xml)
+    print(f"[收到消息] From: {msg.get('FromUserName')}, Content: {msg.get('Content')}")
+
+    # 处理消息
+    try:
+        reply_text = handle_wecom_message(msg)
+    except Exception as e:
+        print(f"[处理消息异常] {e}")
+        reply_text = f"处理消息时出错：{e}"
+
+    # 构建加密回复
+    from_user = msg.get("FromUserName", "")
+    to_user = msg.get("ToUserName", "")
+    reply_xml = build_text_reply(from_user, to_user, reply_text)
+    encrypted_reply = build_encrypted_reply(
+        WECOM_TOKEN, WECOM_ENCODING_AES_KEY, WECOM_CORP_ID, reply_xml
+    )
+
+    return Response(content=encrypted_reply, media_type="application/xml")
+
+
+@app.get("/api/bot/status")
+async def bot_status():
+    """检查企业微信机器人配置状态"""
+    return {
+        "wecom_configured": bool(WECOM_CORP_ID and WECOM_CORP_SECRET and WECOM_TOKEN and WECOM_ENCODING_AES_KEY),
+        "deepseek_configured": bool(os.environ.get("DEEPSEEK_API_KEY")),
+        "github_configured": bool(GITHUB_TOKEN and GITHUB_REPO),
+        "events_count": len(fetch_events()),
+    }
 
 
 # ========== 启动入口 ==========

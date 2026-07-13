@@ -329,6 +329,65 @@ async def github_status():
     return status
 
 
+@app.get("/api/export")
+async def export_events_excel():
+    """从云端 events.json 导出 Excel 文件"""
+    events = fetch_events(retry_on_empty=True)
+    if not events:
+        raise HTTPException(404, "暂无赛事数据，请先通过机器人或表单添加赛事")
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "TCG赛事日历"
+
+    # 表头
+    ws["A1"] = "TCG品类"
+    ws["B1"] = "赛事名称"
+    ws["C1"] = "开始日期"
+    ws["D1"] = "结束日期"
+    ws["E1"] = "城市"
+
+    # 表头样式
+    header_font = openpyxl.styles.Font(bold=True, size=12)
+    header_fill = openpyxl.styles.PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    header_font_white = openpyxl.styles.Font(bold=True, size=12, color="FFFFFF")
+    for cell in [ws["A1"], ws["B1"], ws["C1"], ws["D1"], ws["E1"]]:
+        cell.font = header_font_white
+        cell.fill = header_fill
+        cell.alignment = openpyxl.styles.Alignment(horizontal="center")
+
+    # 按日期排序写入数据
+    events_sorted = sorted(events, key=lambda e: e.get("start_date", ""))
+    for i, evt in enumerate(events_sorted, start=2):
+        ws.cell(row=i, column=1, value=evt.get("tcg_type", ""))
+        ws.cell(row=i, column=2, value=evt.get("event_name", ""))
+        ws.cell(row=i, column=3, value=evt.get("start_date", ""))
+        ws.cell(row=i, column=4, value=evt.get("end_date", ""))
+        ws.cell(row=i, column=5, value=evt.get("city", ""))
+
+    # 调整列宽
+    ws.column_dimensions["A"].width = 22
+    ws.column_dimensions["B"].width = 28
+    ws.column_dimensions["C"].width = 14
+    ws.column_dimensions["D"].width = 14
+    ws.column_dimensions["E"].width = 12
+
+    # 保存到内存
+    output = io.BytesIO()
+    wb.save(output)
+    wb.close()
+    output.seek(0)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    filename = f"TCG赛事日历_{timestamp}.xlsx"
+
+    return Response(
+        content=output.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 # ========== 表单添加赛事（群友用）==========
 
 @app.post("/api/add-event-via-form")
@@ -419,8 +478,9 @@ def handle_wecom_message(msg: dict) -> str:
             "1️⃣ 添加赛事：直接发送赛事信息，例如：\n"
             "   宝可梦卡牌 上海公开赛 7月15日到16日 上海\n\n"
             "2️⃣ 查看所有赛事：发送「列表」\n\n"
-            "3️⃣ 删除赛事：发送「删除 关键词」（如：删除 上海公开赛）\n\n"
-            "4️⃣ 同步日历：发送「同步」手动推送日历到订阅链接\n\n"
+            "3️⃣ 导出Excel：发送「导出」获取云端表格下载链接\n\n"
+            "4️⃣ 删除赛事：发送「删除 关键词」（如：删除 上海公开赛）\n\n"
+            "5️⃣ 同步日历：发送「同步」手动推送日历到订阅链接\n\n"
             "📅 订阅链接：\n"
             "https://nirako1016.github.io/tcg-calendar/calendar.ics"
         )
@@ -463,6 +523,17 @@ def handle_wecom_message(msg: dict) -> str:
             return f"✅ 日历已同步到 GitHub Pages\n订阅链接：{result.get('url', '')}"
         else:
             return f"❌ 同步失败：{result.get('message', '未知错误')}"
+
+    # 命令：导出
+    if content.lower() in ("导出", "下载", "导出excel", "下载excel", "export", "download"):
+        events_check = fetch_events()
+        if not events_check:
+            return "📋 当前没有任何赛事数据，无需导出"
+        return (
+            f"📥 点击链接下载云端赛事表格：\n"
+            f"https://tcg-calendar.onrender.com/api/export\n\n"
+            f"当前共 {len(events_check)} 场赛事"
+        )
 
     # 命令：清空
     if content.lower() in ("清空", "清除"):

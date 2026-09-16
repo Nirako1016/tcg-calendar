@@ -33,5 +33,12 @@
     "start_date": "2026-10-31",
     "end_date": "2026-11-01",
     "city": "曼谷"
+  },
+  {
+    "tcg_type": "游戏王",
+    "event_name": "KA盟大积分赛-白鸽",
+    "start_date": "2026-09-27",
+    "end_date": "2026-09-27",
+    "city": "上海"
   }
 ]

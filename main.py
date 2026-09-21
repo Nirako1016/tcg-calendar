@@ -344,6 +344,13 @@ async def publish_to_github(
     return result
 
 
+@app.get("/api/events")
+async def list_cloud_events():
+    """返回云端 events.json 的全部赛事（供首页日历可视化展示）"""
+    events = fetch_events(retry_on_empty=True)
+    return {"success": True, "count": len(events), "events": events}
+
+
 @app.get("/api/github/status")
 async def github_status():
     """检查 GitHub 配置和 Pages 状态"""

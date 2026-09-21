@@ -353,6 +353,49 @@
             color: #888;
         }
 
+        /* 云端日历卡片 */
+        .cloud-cal-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+        }
+        .refresh-btn {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid #3a3a5a;
+            color: #aaa;
+            padding: 6px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        .refresh-btn:hover { border-color: #667eea; color: #fff; background: rgba(102,126,234,0.1); }
+        .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .cloud-cal-foot {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-top: 12px;
+            font-size: 12px;
+            flex-wrap: wrap;
+        }
+        .cloud-legend { display: flex; gap: 10px; flex-wrap: wrap; }
+        .cloud-legend .lg-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            color: #888;
+            font-size: 11px;
+        }
+        .cloud-legend .lg-dot { width: 8px; height: 8px; border-radius: 2px; }
+        /* 云端日历今日高亮更明显 */
+        #cloud-grid .day-cell.today {
+            background: rgba(102,126,234,0.14);
+            box-shadow: inset 0 0 0 1px #667eea;
+        }
+
         /* 事件标签颜色 */
         .event-tag.tag-purple { background: rgba(139,92,246,0.2); color: #a78bfa; }
         .event-tag.tag-purple .dot { background: #a78bfa; }
@@ -413,6 +456,38 @@
     <div style="text-align:center;margin-bottom:16px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
         <a href="/add" style="display:inline-block;padding:8px 18px;background:#6c5ce7;color:#fff;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;">📝 添加赛事</a>
         <a href="/api/export" style="display:inline-block;padding:8px 18px;background:#00b894;color:#fff;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;">📥 导出Excel</a>
+    </div>
+
+    <!-- 云端赛事日历（打开即显示） -->
+    <div class="card" id="cloud-cal-card">
+        <div class="cloud-cal-head">
+            <h2 style="margin:0;">📅 当前赛事日历</h2>
+            <button class="refresh-btn" id="cloud-refresh" title="刷新">🔄 刷新</button>
+        </div>
+        <div class="calendar-view">
+            <div class="calendar-header">
+                <span class="month-label" id="cloud-month-label">加载中...</span>
+                <div class="nav-btns">
+                    <button id="cloud-prev" title="上个月">◀</button>
+                    <button id="cloud-today" title="回到本月" style="width:auto;padding:0 12px;font-size:12px;">今天</button>
+                    <button id="cloud-next" title="下个月">▶</button>
+                </div>
+            </div>
+            <div class="calendar-weekdays">
+                <div class="weekday">日</div>
+                <div class="weekday">一</div>
+                <div class="weekday">二</div>
+                <div class="weekday">三</div>
+                <div class="weekday">四</div>
+                <div class="weekday">五</div>
+                <div class="weekday">六</div>
+            </div>
+            <div class="calendar-grid" id="cloud-grid"></div>
+        </div>
+        <div class="cloud-cal-foot">
+            <span id="cloud-summary" class="text-muted">正在加载云端数据...</span>
+            <span class="cloud-legend" id="cloud-legend"></span>
+        </div>
     </div>
 
     <!-- 步骤 1: 上传 -->
@@ -719,6 +794,147 @@ document.getElementById('cal-today').addEventListener('click', () => {
     renderCalendar();
 });
 
+// ========== 云端赛事日历（首页打开即显示）==========
+let cloudEvents = [];
+let cloudCalYear, cloudCalMonth;
+
+function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+}
+
+function fmtLocal(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function renderCloudCalendar() {
+    const label = document.getElementById('cloud-month-label');
+    const grid = document.getElementById('cloud-grid');
+    label.textContent = `${cloudCalYear}年 ${cloudCalMonth + 1}月`;
+
+    // 日期 → 事件映射（跨天事件在每一天都要出现）
+    const dateEvents = {};
+    cloudEvents.forEach(e => {
+        const start = new Date(e.start_date + 'T00:00:00');
+        const end = new Date(e.end_date + 'T00:00:00');
+        if (isNaN(start) || isNaN(end)) return;
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            const key = fmtLocal(d);
+            (dateEvents[key] = dateEvents[key] || []).push(e);
+        }
+    });
+
+    const todayStr = fmtLocal(new Date());
+    const firstDay = new Date(cloudCalYear, cloudCalMonth, 1);
+    const lastDay = new Date(cloudCalYear, cloudCalMonth + 1, 0);
+    const startDow = firstDay.getDay();
+
+    // 本月涉及的赛事去重计数 + 品类图例
+    const monthSeen = new Set();
+    const monthTypes = new Set();
+
+    let html = '';
+
+    // 上月填充
+    const prevLast = new Date(cloudCalYear, cloudCalMonth, 0).getDate();
+    for (let i = startDow - 1; i >= 0; i--) {
+        html += `<div class="day-cell other-month"><span class="day-num">${prevLast - i}</span></div>`;
+    }
+
+    // 当月
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+        const dateStr = `${cloudCalYear}-${String(cloudCalMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const evs = dateEvents[dateStr] || [];
+        evs.forEach(e => {
+            monthSeen.add(`${e.tcg_type}|${e.event_name}|${e.start_date}`);
+            monthTypes.add(e.tcg_type);
+        });
+
+        let cls = 'day-cell';
+        if (dateStr === todayStr) cls += ' today';
+
+        let tags = '';
+        const maxShow = 2;
+        evs.slice(0, maxShow).forEach(e => {
+            const tip = `【${e.tcg_type}】【${e.event_name}】\n${e.start_date}${e.end_date !== e.start_date ? ' ~ ' + e.end_date : ''}${e.city ? ' @ ' + e.city : ''}`;
+            tags += `<div class="event-tag ${getTagColor(e.tcg_type)}" title="${esc(tip)}">`
+                  + `<span class="dot"></span><span class="tag-text">${esc(e.event_name)}</span></div>`;
+        });
+        if (evs.length > maxShow) {
+            const rest = evs.slice(maxShow).map(e => `【${e.tcg_type}】【${e.event_name}】`).join('\n');
+            tags += `<div class="more-events" title="${esc(rest)}">+${evs.length - maxShow} 更多</div>`;
+        }
+
+        html += `<div class="${cls}"><span class="day-num">${d}</span><div class="day-events">${tags}</div></div>`;
+    }
+
+    // 下月填充
+    const endDow = lastDay.getDay();
+    for (let i = 1; i < 7 - endDow; i++) {
+        html += `<div class="day-cell other-month"><span class="day-num">${i}</span></div>`;
+    }
+
+    grid.innerHTML = html;
+
+    // 底部统计
+    const summary = monthSeen.size
+        ? `本月 ${monthSeen.size} 场赛事 · 云端共 ${cloudEvents.length} 场`
+        : `本月没有赛事 · 云端共 ${cloudEvents.length} 场`;
+    document.getElementById('cloud-summary').innerHTML = `<span class="text-muted">${summary}</span>`;
+
+    // 图例（只显示本月涉及的品类，复用 .event-tag .dot 的颜色规则）
+    const legend = [...monthTypes].slice(0, 8).map(t => {
+        const cls = getTagColor(t);
+        return `<span class="lg-item"><span class="event-tag ${cls}" style="padding:1px 3px;border-radius:3px;"><span class="dot"></span></span>${esc(t)}</span>`;
+    }).join('');
+    document.getElementById('cloud-legend').innerHTML = legend;
+}
+
+async function loadCloudCalendar() {
+    const summary = document.getElementById('cloud-summary');
+    const label = document.getElementById('cloud-month-label');
+    const btn = document.getElementById('cloud-refresh');
+    btn.disabled = true;
+    summary.innerHTML = '<span class="text-muted">正在加载云端数据...</span>';
+
+    try {
+        const resp = await fetch(`${BASE_URL}/api/events`, { cache: 'no-store' });
+        const data = await resp.json();
+        cloudEvents = data.events || [];
+        const now = new Date();
+        cloudCalYear = now.getFullYear();
+        cloudCalMonth = now.getMonth();
+        renderCloudCalendar();
+    } catch (err) {
+        label.textContent = '加载失败';
+        summary.innerHTML = `<span style="color:#ef4444;">加载失败：${esc(err.message)}</span>`;
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+document.getElementById('cloud-prev').addEventListener('click', () => {
+    cloudCalMonth--;
+    if (cloudCalMonth < 0) { cloudCalMonth = 11; cloudCalYear--; }
+    renderCloudCalendar();
+});
+document.getElementById('cloud-next').addEventListener('click', () => {
+    cloudCalMonth++;
+    if (cloudCalMonth > 11) { cloudCalMonth = 0; cloudCalYear++; }
+    renderCloudCalendar();
+});
+document.getElementById('cloud-today').addEventListener('click', () => {
+    const now = new Date();
+    cloudCalYear = now.getFullYear();
+    cloudCalMonth = now.getMonth();
+    renderCloudCalendar();
+});
+document.getElementById('cloud-refresh').addEventListener('click', loadCloudCalendar);
+
+// 打开页面即加载云端日历
+loadCloudCalendar();
+
 // ========== 生成 ICS ==========
 document.getElementById('btn-generate').addEventListener('click', async () => {
     const btn = document.getElementById('btn-generate');
@@ -830,6 +1046,9 @@ document.getElementById('btn-publish').addEventListener('click', async () => {
             showStatus(status, '推送成功！', 'success');
             btn.textContent = '✅ 已推送';
             btn.className = 'btn btn-success';
+
+            // 云端数据已变更，刷新首页日历
+            loadCloudCalendar();
 
             // 显示 GitHub Pages 订阅链接
             document.getElementById('github-subscribe-url').textContent = data.url;

@@ -817,6 +817,8 @@ document.getElementById('btn-publish').addEventListener('click', async () => {
     try {
         const formData = new FormData();
         formData.append('ics_content', currentIcsContent);
+        // 带上 session_id，让后端把这批赛事同步写入云端表格，避免被后续添加覆盖
+        if (currentSessionId) formData.append('session_id', currentSessionId);
 
         const resp = await fetch(`${BASE_URL}/api/publish`, {
             method: 'POST',

@@ -33,7 +33,7 @@ from wecom_crypto import (
 # LLM 解析
 from llm_parser import parse_event_message, is_add_event_intent
 # 事件持久化
-from event_store import fetch_events, add_event, remove_events, clear_all_events
+from event_store import fetch_events, save_events, add_event, remove_events, clear_all_events
 
 # 内存缓存：存储最近解析的事件
 import uuid
@@ -304,9 +304,43 @@ async def serve_latest_calendar():
 
 
 @app.post("/api/publish")
-async def publish_to_github(ics_content: str = Form(...)):
-    """将 ICS 内容推送到 GitHub Pages"""
+async def publish_to_github(
+    ics_content: str = Form(...),
+    session_id: str = Form(""),
+):
+    """
+    将 ICS 内容推送到 GitHub Pages。
+    如果带 session_id，同时把该批赛事合并写入云端 events.json，
+    保证 Excel 上传链路与机器人/表单链路的数据统一（否则后续添加会覆盖掉这里的数据）。
+    """
+    merged_msg = ""
+    if session_id and session_id in event_cache:
+        uploaded = event_cache[session_id]
+        try:
+            # 合并去重：[品类+赛事名+开始日期] 为唯一键
+            existing = fetch_events(retry_on_empty=True)
+            pool = {f"{e['tcg_type']}|{e['event_name']}|{e['start_date']}": e for e in existing}
+            for e in uploaded:
+                key = f"{e['tcg_type']}|{e['event_name']}|{e['start_date']}"
+                pool[key] = {
+                    "tcg_type": e["tcg_type"],
+                    "event_name": e["event_name"],
+                    "start_date": e["start_date"],
+                    "end_date": e["end_date"],
+                    "city": e.get("city", ""),
+                }
+            merged = sorted(pool.values(), key=lambda x: x["start_date"])
+            save_result = save_events(merged)
+            if save_result["success"]:
+                merged_msg = f"（云端表格已同步，共 {len(merged)} 场）"
+            else:
+                merged_msg = f"（警告：云端表格同步失败 {save_result['message']}）"
+        except Exception as e:
+            merged_msg = f"（警告：云端表格同步异常 {e}）"
+
     result = push_ics_to_github(ics_content)
+    if result.get("success") and merged_msg:
+        result["message"] = f"{result['message']} {merged_msg}"
     return result
 
 

@@ -9,7 +9,7 @@ import tempfile
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, quote
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Query
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
@@ -381,10 +381,17 @@ async def export_events_excel():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     filename = f"TCG赛事日历_{timestamp}.xlsx"
 
+    # HTTP 头仅支持 latin-1 编码，中文文件名必须用 RFC 5987 编码（filename*）
+    # 同时提供纯 ASCII 的 filename 作为兼容兜底
+    ascii_fallback = f"tcg_calendar_{timestamp}.xlsx"
+    content_disposition = (
+        f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{quote(filename)}"
+    )
+
     return Response(
         content=output.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": content_disposition},
     )
 
 
